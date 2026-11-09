@@ -185,26 +185,37 @@ def test_declined_card_does_not_show_success():
 
 
 def test_declined_card_db_state(run_sql):
-    """Блок 3.8: после оплаты отклонённой картой в payment_entity
-    не должно быть записи со статусом APPROVED по последней операции."""
+    """Блок 3.8: после оплаты отклонённой картой новая запись в payment_entity
+    имеет статус DECLINED (не APPROVED). Проверка срезом «до/после» отправки —
+    не зависит от истории БД."""
     driver, wait = open_card_form()
     try:
+        before = _parse_rows(run_sql(
+            "SELECT id, created FROM payment_entity ORDER BY created DESC LIMIT 1;"
+        ))
+        before_created = before[0]["created"] if before else ""
+
         fill_card_form(driver, wait, DECLINED_CARD)
 
-        time.sleep(2)  # даём шлюзу записать результат операции
+        DB_SETTLE_TIMEOUT = 15
+        deadline = time.monotonic() + DB_SETTLE_TIMEOUT
+        new_rows = []
+        while time.monotonic() < deadline:
+            new_rows = _parse_rows(run_sql(
+                f"SELECT id, status, created FROM payment_entity "
+                f"WHERE created > '{before_created}';"
+            ))
+            if new_rows:
+                break
+            time.sleep(1)
 
-        rows = _parse_rows(run_sql(
-            "SELECT id, status, created FROM payment_entity "
-            "ORDER BY created DESC LIMIT 3;"
-        ))
-        assert rows, "В payment_entity нет записей"
-        print(f"\nПоследние записи payment_entity: {rows}")
-
-        approved = [r for r in rows if r["status"] == "APPROVED"]
-        assert not approved, (
-            f"После отказа банка найдена запись APPROVED: {approved} — "
-            f"отклонённая операция помечена как успешная. См. issue #1"
+        assert new_rows, "Новая запись в payment_entity не появилась"
+        statuses = {r["status"] for r in new_rows}
+        assert statuses == {"DECLINED"}, (
+            f"Ожидали только DECLINED для отклонённой операции, "
+            f"получили {statuses}: {new_rows}. См. issue #1"
         )
-        print("[3.8] OK: записи APPROVED в payment_entity после отказа нет")
+        print(f"\n[3.8] OK: отклонённая операция сохранена со статусом DECLINED "
+              f"(id={new_rows[0]['id']})")
     finally:
         driver.quit()
