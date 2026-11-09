@@ -1,0 +1,8 @@
+venv/
+.gigaide/
+.idea/
+__pycache__/
+*.pyc
+build/
+.DS_Store
+Thumbs.db

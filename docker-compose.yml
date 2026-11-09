@@ -1,0 +1,24 @@
+services:
+  mysql:
+    image: mysql:8.0
+    ports:
+      - "3307:3306"
+    environment:
+      MYSQL_ROOT_PASSWORD: root
+      MYSQL_DATABASE: app
+      MYSQL_USER: app
+      MYSQL_PASSWORD: pass
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-uroot", "-proot"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  gate-simulator:
+    image: node:20-alpine
+    working_dir: /app
+    volumes:
+      - ./gate-simulator:/app
+    ports:
+      - "9999:9999"
+    command: sh -c "npm install && npm start"
