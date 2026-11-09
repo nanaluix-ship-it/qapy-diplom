@@ -1,5 +1,4 @@
 import os
-import pytest
 import time
 from datetime import date
 
@@ -17,20 +16,13 @@ BASE_URL = "http://localhost:8080"
 TOUR_PRICE_KOP = 4500000  # 45 000 ₽ в копейках
 
 
-def _boundary_dates():
-    """Возвращает два валидных граничных срока действия карты.
+def _yy(year: int) -> str:
+    """Год в двузначном формате для поля карты: 26, а не 2026.
 
-    Январь валиден со следующим годом (если сейчас не январь),
-    декабрь — с текущим годом. Логика привязана к дате запуска теста,
-    поэтому тест не устареет.
+    Поле «Год» ограничено двумя символами — четырёхзначный ввод
+    обрезается до '20' и дата превращается в 2020-й.
     """
-    today = date.today()
-    december = ("12", f"{today.year}")
-    if today.month == 1:
-        january = ("01", f"{today.year}")
-    else:
-        january = ("01", f"{today.year + 1}")
-    return [january, december]
+    return f"{year % 100:02d}"
 
 
 def _parse_rows(sql_output):
@@ -101,7 +93,7 @@ def test_2_2_boundary_december(run_sql):
     driver = make_driver()
     try:
         wait = WebDriverWait(driver, 15)
-        month, year = "12", str(date.today().year)
+        month, year = "12", _yy(date.today().year)
         driver.get(BASE_URL)
         open_payment_form(driver, wait)
         fill_card_form(driver, wait, APPROVED_CARD, month=month, year=year)
@@ -118,17 +110,15 @@ def test_2_2_boundary_december(run_sql):
         driver.quit()
 
 
-@pytest.mark.xfail(reason="issue #2: валидные даты с месяцем меньше текущего "
-                          "отвергаются с ошибкой 'Истёк срок действия карты'", strict=True)
 def test_2_2_boundary_january_next_year(run_sql):
-    """2.2b: срок 01 следующего года — валидная дата, но форма её отвергает."""
+    """2.2b: срок 01 следующего года — валидная дата на границе года, принята банком."""
     driver = make_driver()
     try:
         wait = WebDriverWait(driver, 15)
-        next_year = date.today().year + 1
+        next_year = _yy(date.today().year + 1)
         driver.get(BASE_URL)
         open_payment_form(driver, wait)
-        fill_card_form(driver, wait, APPROVED_CARD, month="01", year=str(next_year))
+        fill_card_form(driver, wait, APPROVED_CARD, month="01", year=next_year)
 
         bank_wait = WebDriverWait(driver, BANK_TIMEOUT)
         try:
