@@ -1,4 +1,5 @@
 import os
+import time
 
 import pytest
 from selenium import webdriver
@@ -29,10 +30,35 @@ SUCCESS_NOTIFICATION = (By.XPATH, "//*[contains(text(), 'Успешно')]")
 BANK_TIMEOUT = 45
 
 
+def _parse_rows(sql_output):
+    """Парсит табличный вывод mysql -e в список словарей."""
+    lines = [l for l in sql_output.strip().splitlines() if l.strip()]
+    if len(lines) < 2:
+        return []
+    headers = lines[0].split("\t")
+    rows = []
+    for line in lines[1:]:
+        values = line.split("\t")
+        rows.append(dict(zip(headers, values)))
+    return rows
+
+
+def _dump_evidence(driver, label, extra_elements=None):
+    """Сохраняет скриншот и печатает видимые элементы как доказательство."""
+    os.makedirs("screenshots", exist_ok=True)
+    safe_label = label.replace("/", "")
+    driver.save_screenshot(f"screenshots/{safe_label}.png")
+    print(f"\n=== Доказательство {label} ===")
+    for el in (extra_elements or driver.find_elements(
+            By.CSS_SELECTOR, ".notification, [class*='notification'], div")):
+        text = (el.text or "").strip()
+        if text and el.is_displayed() and len(text) < 100:
+            print(repr(text), "| class=", el.get_attribute("class"))
+
+
 def open_card_form():
     """Открывает браузер и форму оплаты, возвращает (driver, wait)."""
     options = Options()
-    # Если нужно видеть браузер во время прогона — закомментируй строку ниже
     options.add_argument("--headless=new")
 
     driver = webdriver.Chrome(options=options)
@@ -60,8 +86,6 @@ def fill_card_form(driver, wait, card_number):
             "input[placeholder*='Ivan']"
         )
     except NoSuchElementException:
-        # Fallback: поля формы по порядку:
-        # [0] — карта, [1] — месяц, [2] — год, [3] — владелец, [4] — CVC
         inputs = driver.find_elements(By.CSS_SELECTOR, "form input")
         if len(inputs) >= 4:
             holder_field = inputs[3]
@@ -106,14 +130,7 @@ def test_declined_card_shows_error():
         )
         print(f"\nУведомление об ошибке найдено: {error_msg.text!r}")
     except TimeoutException:
-        # Диагностика: какие видимые уведомления реально есть на странице
-        print("\n=== ДИАГНОСТИКА: видимые уведомления на странице ===")
-        for el in driver.find_elements(
-                By.CSS_SELECTOR, ".notification, [class*='notification'], div"
-        ):
-            text = (el.text or "").strip()
-            if text and el.is_displayed() and len(text) < 100:
-                print(repr(text), "class=", el.get_attribute("class"))
+        _dump_evidence(driver, "issue1_no_error_notification")
         raise
     finally:
         driver.quit()
@@ -135,13 +152,59 @@ def test_declined_card_does_not_show_success():
             print("\n«Успешно» не появилось — баг не воспроизвёлся (или уже исправлен)")
             return
 
-        # Сохраняем доказательство перед падением
+        # Доказательства: скриншот, разметка пойманного элемента,
+        # полный текст уведомления-обёртки
         os.makedirs("screenshots", exist_ok=True)
         driver.save_screenshot("screenshots/issue1_success_on_declined.png")
 
+        print("\n=== БАГ-ДОКАЗАТЕЛЬСТВА ===")
+        print("Пойманный элемент:")
+        print("  tag:", success_msg.tag_name)
+        print("  class:", success_msg.get_attribute("class"))
+        print("  text:", repr(success_msg.text))
+        print("  outerHTML (первые 500 символов):")
+        print((success_msg.get_attribute("outerHTML") or "")[:500])
+
+        # Ищем видимую обёртку уведомления — у неё должен быть полный текст
+        containers = [
+            el for el in driver.find_elements(By.CSS_SELECTOR, "[class*='notification']")
+            if el.is_displayed() and (el.text or "").strip()
+        ]
+        for el in containers:
+            print(f"\nВидимое уведомление: class={el.get_attribute('class')!r}, "
+                  f"text={el.text!r}")
+
+        full_text = " | ".join(el.text for el in containers) or success_msg.text
         assert False, (
-            f"БАГ ПОДТВЕРЖДЁН: UI показал {success_msg.text!r} "
-            f"при оплате отклонённой картой. См. issue #1"
+            f"БАГ ПОДТВЕРЖДЁН: UI показал уведомление успешной операции "
+            f"(текст: {full_text!r}) при оплате отклонённой картой. "
+            f"См. issue #1, скриншот: screenshots/issue1_success_on_declined.png"
         )
+    finally:
+        driver.quit()
+
+
+def test_declined_card_db_state(run_sql):
+    """Блок 3.8: после оплаты отклонённой картой в payment_entity
+    не должно быть записи со статусом APPROVED по последней операции."""
+    driver, wait = open_card_form()
+    try:
+        fill_card_form(driver, wait, DECLINED_CARD)
+
+        time.sleep(2)  # даём шлюзу записать результат операции
+
+        rows = _parse_rows(run_sql(
+            "SELECT id, status, created FROM payment_entity "
+            "ORDER BY created DESC LIMIT 3;"
+        ))
+        assert rows, "В payment_entity нет записей"
+        print(f"\nПоследние записи payment_entity: {rows}")
+
+        approved = [r for r in rows if r["status"] == "APPROVED"]
+        assert not approved, (
+            f"После отказа банка найдена запись APPROVED: {approved} — "
+            f"отклонённая операция помечена как успешная. См. issue #1"
+        )
+        print("[3.8] OK: записи APPROVED в payment_entity после отказа нет")
     finally:
         driver.quit()
