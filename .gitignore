@@ -1,8 +1,7 @@
 venv/
-.gigaide/
-.idea/
 __pycache__/
 *.pyc
-build/
+.pytest_cache/
+allure-results/
 .DS_Store
-Thumbs.db
+gate-simulator/node_modules/

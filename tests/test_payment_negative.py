@@ -1,3 +1,4 @@
+import os
 import time
 
 import pytest
@@ -251,6 +252,77 @@ def test_3_7_cvc_validation(cvc):
         else:
             assert has_error, f"CVC {cvc!r} не отклонён валидацией"
             print(f"\n[3.7] OK: CVC {cvc!r} отклонён: {errors}")
+    finally:
+        driver.quit()
+
+
+@pytest.mark.parametrize("bad_owner, label", [
+    ("123456", "цифры"),
+    ("Иванов Иван", "кириллица"),
+    ("!@#$%^&", "спецсимволы"),
+])
+def test_3_8_owner_validation(run_sql, bad_owner, label):
+    """3.8: валидация поля «Владелец».
+
+    Поле должно принимать только имя и фамилию латиницей. Недопустимые
+    значения (цифры, кириллица, спецсимволы) должны отклоняться ошибкой
+    валидации. Все три класса значений проходят без ошибок и уходят
+    в шлюз — это баг, см. issue #4: тест намеренно оставлен красным
+    как репродукция.
+    """
+    driver, wait = open_payment_form()
+    try:
+        before = _parse_rows(run_sql(
+            "SELECT id, created FROM payment_entity ORDER BY created DESC LIMIT 1;"
+        ))
+        before_created = before[0]["created"] if before else ""
+
+        fill_form(driver, wait,
+                  card=APPROVED_CARD, month="12", year="26",
+                  owner=bad_owner, cvc="999")
+
+        has_error = bool(driver.find_elements(By.CSS_SELECTOR, ".input_invalid"))
+        errors = _visible_validation_errors(driver)
+
+        if has_error:
+            print(f"\n[3.8] OK: владелец {label!r} отклонён: {errors} — "
+                  f"issue #4 не воспроизвёлся")
+            return
+
+        # Ошибки нет — проверяем, дошёл ли баг до конца (успешная операция)
+        deadline = time.monotonic() + BANK_TIMEOUT
+        success_shown = False
+        while time.monotonic() < deadline:
+            if driver.find_elements(By.XPATH, "//*[contains(text(), 'Успешно')]"):
+                success_shown = True
+                break
+            time.sleep(1)
+
+        if success_shown:
+            new_rows = _wait_for_new_payment(run_sql, before_created)
+            db_note = (f"запись в payment_entity создана (status="
+                       f"{new_rows[0]['status']})" if new_rows
+                       else "запись в payment_entity не создана")
+
+            os.makedirs("screenshots", exist_ok=True)
+            driver.save_screenshot(
+                f"screenshots/issue4_owner_{label}_success.png")
+
+            assert False, (
+                f"БАГ ПОДТВЕРЖДЁН (issue #4): владелец {label!r} "
+                f"({bad_owner!r}) принят валидацией — подполевых ошибок нет "
+                f"({errors or 'нет сообщений'}), показано «Успешно», "
+                f"{db_note}. Скриншот: "
+                f"screenshots/issue4_owner_{label}_success.png"
+            )
+        else:
+            assert False, (
+                f"БАГ ПОДТВЕРЖДЁН (issue #4): владелец {label!r} "
+                f"({bad_owner!r}) принят валидацией — подполевых ошибок нет "
+                f"({errors or 'нет сообщений'}), форма отправлена в шлюз, "
+                f"ответ за {BANK_TIMEOUT} с не получен (банк может "
+                f"отклонить операцию, но обратной связи пользователю нет)"
+            )
     finally:
         driver.quit()
 
