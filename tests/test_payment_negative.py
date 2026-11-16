@@ -8,6 +8,7 @@ from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 from selenium.common.exceptions import NoSuchElementException, TimeoutException
+from selenium.webdriver.common.keys import Keys
 from faker import Faker
 
 fake = Faker(locale="ru_RU")
@@ -238,7 +239,7 @@ def test_3_6_far_future_year():
 @allure.feature("Покупка по дебетовой карте")
 @allure.story("Валидация: CVC/CVV (issue #3)")
 @allure.severity(allure.severity_level.NORMAL)
-@pytest.mark.parametrize("cvc", ["1", "99", "00", "000"])
+@pytest.mark.parametrize("cvc", ["1", "99", "00", "000", "abc"])
 def test_3_7_cvc_validation(cvc):
     """3.7: валидация CVC.
     Короткие значения (1–2 цифры) отклоняются ошибкой «Неверный формат».
@@ -272,33 +273,6 @@ def test_3_7_cvc_validation(cvc):
         driver.quit()
 
 
-@pytest.mark.parametrize("cvc", ["001", "999"])
-@allure.feature("Покупка по дебетовой карте")
-@allure.story("Валидация: CVC/CVV — граничные корректные значения")
-@allure.severity(allure.severity_level.NORMAL)
-def test_3_9_cvc_boundary_valid(cvc):
-    """3.9: корректные граничные CVC («001», «999») проходят валидацию.
-    Уточняет issue #3: баг не в общей логике валидации CVC, а
-    конкретно в пропуске значения «000».
-    """
-    driver, wait = open_payment_form()
-    try:
-        fill_form(driver, wait,
-                  card=APPROVED_CARD, month="12", year="26",
-                  owner=fake.first_name() + " " + fake.last_name(), cvc=cvc)
-
-        assert not driver.find_elements(By.CSS_SELECTOR, ".input_invalid"), (
-            f"Валидация отклонила корректный CVC {cvc!r} — "
-            f"логика валидации слишком строгая"
-        )
-        # Форма принята — ждём ответ банка, чтобы подтвердить,
-        # что операция реально прошла (создастся APPROVED-запись)
-        bank_wait = WebDriverWait(driver, BANK_TIMEOUT)
-        bank_wait.until(EC.visibility_of_element_located(SUCCESS_NOTIFICATION))
-    finally:
-        driver.quit()
-
-
 @allure.feature("Покупка по дебетовой карте")
 @allure.story("Валидация: поле «Владелец» (issue #4)")
 @allure.severity(allure.severity_level.NORMAL)
@@ -306,6 +280,7 @@ def test_3_9_cvc_boundary_valid(cvc):
     ("123456", "цифры"),
     ("Иванов Иван", "кириллица"),
     ("!@#$%^&", "спецсимволы"),
+    ("A" * 300, "длинная строка"),
 ])
 def test_3_8_owner_validation(run_sql, bad_owner, label):
     """3.8: валидация поля «Владелец».
@@ -370,6 +345,80 @@ def test_3_8_owner_validation(run_sql, bad_owner, label):
             )
     finally:
         driver.quit()
+
+
+@pytest.mark.parametrize("cvc", ["001", "999"])
+@allure.feature("Покупка по дебетовой карте")
+@allure.story("Валидация: CVC/CVV — граничные корректные значения")
+@allure.severity(allure.severity_level.NORMAL)
+def test_3_9_cvc_boundary_valid(cvc):
+    """3.9: корректные граничные CVC («001», «999») проходят валидацию.
+    Уточняет issue #3: баг не в общей логике валидации CVC, а
+    конкретно в пропуске значения «000».
+    """
+    driver, wait = open_payment_form()
+    try:
+        fill_form(driver, wait,
+                  card=APPROVED_CARD, month="12", year="26",
+                  owner=fake.first_name() + " " + fake.last_name(), cvc=cvc)
+
+        assert not driver.find_elements(By.CSS_SELECTOR, ".input_invalid"), (
+            f"Валидация отклонила корректный CVC {cvc!r} — "
+            f"логика валидации слишком строгая"
+        )
+        # Форма принята — ждём ответ банка, чтобы подтвердить,
+        # что операция реально прошла (создастся APPROVED-запись)
+        bank_wait = WebDriverWait(driver, BANK_TIMEOUT)
+        bank_wait.until(EC.visibility_of_element_located(SUCCESS_NOTIFICATION))
+    finally:
+        driver.quit()
+
+
+@allure.feature("Покупка по дебетовой карте")
+@allure.story("Валидация: номер карты")
+@allure.severity(allure.severity_level.NORMAL)
+@pytest.mark.parametrize("bad_card, label", [
+    ("4444 4444 4444 444", "15 цифр"),
+    ("4444 4444 4444 444A", "буква в номере"),
+    ("4444 4444 4444 44419", "17 цифр"),
+])
+def test_3_10_invalid_card_number(bad_card, label):
+    """3.10: номер карты не из 16 цифр отклоняется валидацией.
+    Особенность: поле ограничено 16 символами, лишний ввод обрезается —
+    17-значный ввод превращается в валидный номер. Это НЕ дефект
+    валидации (аналог инцидента 2.2 с четырёхзначным годом),
+    а ограничение поля, работающее как валидация длины.
+    """
+    driver, wait = open_payment_form()
+    try:
+        card_input = wait.until(EC.presence_of_element_located(CARD_INPUT))
+
+        fill_form(driver, wait,
+                  card=bad_card, month="12", year="26",
+                  owner=fake.first_name() + " " + fake.last_name(), cvc="999")
+
+        # Читаем фактическое значение поля после заполнения
+        actual = card_input.get_attribute("value")
+        normalized = actual.replace(" ", "")
+        expected_digits = bad_card.replace(" ", "")
+        print(f"\n[3.10] ({label}): значение поля: {actual!r}")
+
+        # Ввод обрезан полем — недопустимая длина физически невозможна
+        if len(expected_digits) > 16 and normalized != expected_digits:
+            print(f"[3.10] ({label}): поле обрезало ввод — ограничение "
+                  f"поля работает как валидация длины (аналог инцидента 2.2)")
+            return
+
+        # 15 цифр / буква: после fill_form фокус ушёл с поля карты,
+        # валидация сработала — ждём признак ошибки
+        wait.until(EC.presence_of_element_located(
+            (By.CSS_SELECTOR, ".input_invalid")))
+        errors = _visible_validation_errors(driver)
+        assert errors, f"Ошибок валидации нет для номера карты ({label})"
+        print(f"[3.10] OK: карта ({label}) отклонена: {errors}")
+    finally:
+        driver.quit()
+
 
 
 @allure.feature("Хранение данных в БД")
