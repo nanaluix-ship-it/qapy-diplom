@@ -1,0 +1,1 @@
+[4.3] OK: credit_request 455ac010-9356-41f1-ada0-ade2f94ffa57, status=APPROVED, bank_id=38833b10-fb9b-45a4-a634-f53dd5b396cb

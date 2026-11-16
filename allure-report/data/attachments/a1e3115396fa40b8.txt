@@ -1,0 +1,2 @@
+
+[6.2] OK: ровно одна запись APPROVED (id=362cd28d-339e-4eba-8ff5-b7ddb9d7a583)

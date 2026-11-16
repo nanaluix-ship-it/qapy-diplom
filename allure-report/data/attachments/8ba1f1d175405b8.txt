@@ -1,0 +1,5 @@
+
+[2.3] Срез до оплаты: последняя запись payment_entity создана '2026-11-16 20:32:01.164529'
+[2.3] Новая запись платежа: id=2e234ca5-a2f5-4801-a43a-4596c533b6c1, transaction_id='6a86fb0d-0ce3-4214-91fc-858ccb0beb45'
+[2.3] Колонки order_entity: ['id', 'created', 'credit_id', 'payment_id']
+[2.3] OK: заказ связан с платежом 6a86fb0d-0ce3-4214-91fc-858ccb0beb45

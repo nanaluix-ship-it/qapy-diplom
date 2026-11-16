@@ -103,12 +103,11 @@ def test_8_5_api_invalid_body():
     """8.5: POST /api/v1/credit с невалидным телом — ожидается ошибка
     клиентского класса (4xx). Фактически приложение возвращает 500
     с message '400 Bad Request' — чужая ошибка шлюза заворачивается
-    в Internal Server Error. Кандидат в issue #6 (Minor).
-    Тест оставлен как репродукция, ср. подход issue #3/#4."""
+    в Internal Server Error. См. issue #5, ср. подход issue #3/#4.
+    Тест оставлен как репродукция."""
     r = requests.post(APP + "/api/v1/credit", json={"foo": "bar"}, timeout=30)
-    has_error = r.status_code >= 400
     assert 400 <= r.status_code < 500, (
-        f"БАГ ПОДТВЕРЖДЁН (issue #5, кандидат): невалидное тело запроса "
+        f"БАГ ПОДТВЕРЖДЁН (issue #5): невалидное тело запроса "
         f"вернуло {r.status_code} вместо ошибки клиентского класса (4xx). "
         f"Тело ответа: {r.text[:300]!r}. Ошибка шлюза (400 Bad Request) "
         f"заворачивается в Internal Server Error."

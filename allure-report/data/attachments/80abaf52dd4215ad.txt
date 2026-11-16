@@ -1,0 +1,1 @@
+order_id=69ed447b-654c-4c0b-b754-a68ded3ee91a ссылается на payment_id=463a6cdc-1e04-4616-89fd-5f4e2cf68576 — запись отсутствует в payment_entity

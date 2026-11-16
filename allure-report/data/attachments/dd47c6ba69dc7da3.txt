@@ -1,0 +1,2 @@
+
+[8.1] OK: 200 APPROVED, запись в БД создана (status=APPROVED)

@@ -1,0 +1,2 @@
+
+[2.1] OK: payment 492d15d2-b58f-4d27-b995-fa5bb6e13d8c, status=APPROVED, amount=4500000

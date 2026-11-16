@@ -1,0 +1,5 @@
+
+=== Доказательство issue1_credit_no_error_notification ===
+'Успешно\nОперация одобрена Банком.' | class= notification notification_visible notification_status_ok notification_has-closer notification_stick-to_right notification_theme_alfa-on-white
+'Успешно' | class= notification__title
+'Операция одобрена Банком.' | class= notification__content

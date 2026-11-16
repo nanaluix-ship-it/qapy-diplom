@@ -1,0 +1,2 @@
+
+=== Доказательство issue1_credit_no_error_notification ===

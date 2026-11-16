@@ -1,0 +1,12 @@
+
+=== Доказательство issue1_no_error_notification ===
+'Марракэш\nСказочный Восток\n33 360 миль на карту\nДо 7% на остаток по счёту\nВсего 45 000 руб.!' | class= Order_cardPreview__47B2k
+'Марракэш\nСказочный Восток\n33 360 миль на карту\nДо 7% на остаток по счёту\nВсего 45 000 руб.!' | class= grid-row grid-row_gutter-mobile-s_16 grid-row_gutter-desktop-m_24 grid-row_justify_between grid-row_theme_alfa-on-white
+'Марракэш\nСказочный Восток\n33 360 миль на карту\nДо 7% на остаток по счёту\nВсего 45 000 руб.!' | class= grid-col grid-col_theme_alfa-on-white grid-col_gutter-mobile-s_16 grid-col_gutter-desktop-m_24
+'Номер карты' | class= form-field form-field_size_m form-field_theme_alfa-on-white
+'Месяц\nГод' | class= form-field form-field_size_m form-field_theme_alfa-on-white
+'Владелец\nCVC/CVV' | class= form-field form-field_size_m form-field_theme_alfa-on-white
+'Продолжить' | class= form-field form-field_size_m form-field_theme_alfa-on-white
+'Успешно\nОперация одобрена Банком.' | class= notification notification_visible notification_status_ok notification_has-closer notification_stick-to_right notification_theme_alfa-on-white
+'Успешно' | class= notification__title
+'Операция одобрена Банком.' | class= notification__content

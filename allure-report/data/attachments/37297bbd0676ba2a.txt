@@ -1,0 +1,4 @@
+
+[6.3] DECLINED-запись появилась: id=c36d2f9c-7bcd-40fa-b15b-38b1d9ccc6ed, created=2026-11-16 12:56:35.466064
+
+[6.3] Ошибочный заказ: id=4c407b4d-82ba-4944-8422-c9603149df56, created=2026-11-16 12:56:35.491598, payment_id=bc98004b-80f1-49b6-a848-3469ac811cea, credit_id=NULL

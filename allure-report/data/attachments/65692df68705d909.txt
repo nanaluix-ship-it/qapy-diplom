@@ -1,0 +1,2 @@
+
+[5.3] OK: 1 заявок со статусом DECLINED (id=ec7df9aa-2309-48aa-8dfc-2711c92be187, bank_id=36a29599-1885-429b-acb5-1a8659cb0cbf)
