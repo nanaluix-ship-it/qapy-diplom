@@ -1,6 +1,7 @@
 import time
-
+import allure
 import pytest
+from tests.conftest import attach_screenshot
 from selenium import webdriver
 from selenium.webdriver.chrome.options import Options
 from selenium.webdriver.common.by import By
@@ -8,6 +9,7 @@ from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 from selenium.common.exceptions import NoSuchElementException, TimeoutException
 from faker import Faker
+
 
 fake = Faker(locale="ru_RU")
 
@@ -77,7 +79,6 @@ def _find_owner_field(driver):
 def fill_credit_form(driver, wait, card=None, month=None, year=None,
                      owner=None, cvc=None):
     """Заполняет только переданные поля формы кредита и нажимает «Продолжить».
-
     Незаполненные поля остаются пустыми — так тестируется валидация.
     """
     fields = {
@@ -108,7 +109,6 @@ def _visible_validation_errors(driver):
 def _wait_for_new_credit_requests(run_sql, before_created,
                                   timeout=DB_SETTLE_TIMEOUT):
     """Ищет записи credit_request_entity, созданные ПОСЛЕ отправки формы.
-
     Возвращает список найденных записей (может быть пустым).
     """
     deadline = time.monotonic() + timeout
@@ -137,6 +137,9 @@ def _dump_evidence(driver, label):
             print(repr(text), "| class=", el.get_attribute("class"))
 
 
+@allure.feature("Покупка в кредит")
+@allure.story("Обработка отклонённой заявки (issue #1)")
+@allure.severity(allure.severity_level.CRITICAL)
 @pytest.mark.xfail(
     reason="issue #1: declined-кредит обрабатывается как успешный, "
            "уведомление об отказе не показывается",
@@ -166,6 +169,9 @@ def test_5_1_credit_declined_shows_error():
         driver.quit()
 
 
+@allure.feature("Покупка в кредит")
+@allure.story("Обработка отклонённой заявки (issue #1)")
+@allure.severity(allure.severity_level.CRITICAL)
 def test_5_2_credit_declined_does_not_show_success():
     """5.2: баг-репродукция (issue #1, кредит) — UI не должен показывать
     «Успешно» при отклонённой кредитной операции. Красный тест = доказательство
@@ -186,20 +192,30 @@ def test_5_2_credit_declined_does_not_show_success():
                   "сценарии не воспроизвёлся")
             return
 
-        _dump_evidence(driver, "issue1_credit_success_on_declined")
+        attach_screenshot(driver, "issue1_credit_success_on_declined")
 
-        full_text = success_msg.text
+        containers = [
+            el for el in driver.find_elements(By.CSS_SELECTOR, "[class*='notification']")
+            if el.is_displayed() and (el.text or "").strip()
+        ]
+        for el in containers:
+            print(f"\n[5.2] Видимое уведомление: "
+                  f"class={el.get_attribute('class')!r}, text={el.text!r}")
+
+        full_text = " | ".join(el.text for el in containers) or success_msg.text
         assert False, (
             f"БАГ ПОДТВЕРЖДЁН (issue #1, кредитный сценарий): UI показал "
-            f"уведомление успешной операции (class="
-            f"{success_msg.get_attribute('class')!r}, текст: {full_text!r}) "
-            f"при отклонённой кредитной операции. Скриншот: "
-            f"screenshots/issue1_credit_success_on_declined.png"
+            f"уведомление успешной операции (текст: {full_text!r}) "
+            f"при отклонённой кредитной операции. Скриншот прикреплён "
+            f"во вкладке Attachments."
         )
     finally:
         driver.quit()
 
 
+@allure.feature("Покупка в кредит")
+@allure.story("Статус кредитной заявки в БД")
+@allure.severity(allure.severity_level.CRITICAL)
 def test_5_3_credit_request_declined_in_db(run_sql):
     """5.3: после отклонённого кредита в credit_request_entity создаётся
     запись со статусом DECLINED (слой данных корректен)."""
@@ -232,6 +248,9 @@ def test_5_3_credit_request_declined_in_db(run_sql):
         driver.quit()
 
 
+@allure.feature("Покупка в кредит")
+@allure.story("Заказ при отклонённой заявке (issue #2)")
+@allure.severity(allure.severity_level.CRITICAL)
 @pytest.mark.xfail(
     reason="issue #2: order_entity получает запись даже для отклонённой "
            "кредитной операции",
@@ -285,6 +304,9 @@ def test_5_4_no_order_for_declined_credit(run_sql):
         driver.quit()
 
 
+@allure.feature("Покупка в кредит")
+@allure.story("Валидация: пустые поля кредитной формы")
+@allure.severity(allure.severity_level.NORMAL)
 def test_5_5_credit_empty_fields_validation():
     """5.5: пустая кредитная форма → ошибки валидации под полями,
     заявка в банк не отправляется."""

@@ -1,6 +1,7 @@
 
 import subprocess
-
+import allure
+import os
 import pytest
 from selenium import webdriver
 from selenium.webdriver.chrome.options import Options
@@ -102,3 +103,20 @@ def run_sql():
             raise RuntimeError(f"SQL-ошибка: {proc.stderr}")
         return proc.stdout
     return _run
+
+
+def attach_screenshot(driver, name: str):
+    """
+    Сохраняет скриншот локально и прикрепляет его к отчёту Allure.
+    name: имя файла без расширения (например, 'issue1_success_on_declined')
+    """
+    os.makedirs("screenshots", exist_ok=True)
+    path = f"screenshots/{name}.png"
+    driver.save_screenshot(path)
+
+    with open(path, "rb") as f:
+        allure.attach(
+            f.read(),
+            name=name,
+            attachment_type=allure.attachment_type.PNG
+        )

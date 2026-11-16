@@ -5,3 +5,5 @@ __pycache__/
 allure-results/
 .DS_Store
 gate-simulator/node_modules/
+.idea/
+.gigaide/

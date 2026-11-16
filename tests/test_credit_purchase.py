@@ -1,13 +1,13 @@
 import os
 import time
-
+import allure
 import pytest
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.common.by import By
 from selenium.common.exceptions import TimeoutException
 
-from conftest import (
+from tests.conftest import (
     make_driver, open_credit_form, fill_card_form,
     APPROVED_CARD, SUCCESS_NOTIFICATION, BANK_TIMEOUT,
 )
@@ -56,10 +56,12 @@ def _wait_for_credit_request(run_sql, timeout=DB_SETTLE_TIMEOUT):
     return None
 
 
+@allure.feature("Покупка в кредит")
+@allure.story("Диагностика состояния БД")
+@allure.severity(allure.severity_level.MINOR)
 @pytest.mark.skip(reason="диагностический тест, запускать вручную")
 def test_4_0_diagnostic_credit_state(run_sql):
     """Диагностика: одна кредитная покупка и полный дамп состояния БД.
-
     Запуск вручную:
     pytest tests/test_credit_purchase.py::test_4_0_diagnostic_credit_state -v -s
     """
@@ -108,6 +110,9 @@ def test_4_0_diagnostic_credit_state(run_sql):
         driver.quit()
 
 
+@allure.feature("Покупка в кредит")
+@allure.story("Оплата одобренной картой")
+@allure.severity(allure.severity_level.CRITICAL)
 def test_4_1_credit_approved_card(run_sql):
     """4.1: «Купить в кредит», одобренная карта → «Успешно»,
     в credit_request_entity запись со статусом APPROVED."""
@@ -136,6 +141,9 @@ def test_4_1_credit_approved_card(run_sql):
         driver.quit()
 
 
+@allure.feature("Покупка в кредит")
+@allure.story("Связь заказа с кредитным запросом в БД")
+@allure.severity(allure.severity_level.CRITICAL)
 def test_4_2_order_linked_to_credit(run_sql):
     """4.2: после успешного кредита в order_entity появляется запись,
     связанная с кредитной операцией через идентификатор банковской операции
@@ -165,7 +173,6 @@ def test_4_2_order_linked_to_credit(run_sql):
             f"bank_id пуст у заявки {latest['id']} — нечем связать заказ"
         )
 
-        # Заказ записывается почти мгновенно, но ждём до DB_SETTLE_TIMEOUT секунд
         deadline = time.monotonic() + DB_SETTLE_TIMEOUT
         orders = []
         while time.monotonic() < deadline:
@@ -196,6 +203,9 @@ def test_4_2_order_linked_to_credit(run_sql):
         driver.quit()
 
 
+@allure.feature("Покупка в кредит")
+@allure.story("Заполнение bank_id в заявке")
+@allure.severity(allure.severity_level.NORMAL)
 def test_4_3_credit_bank_id_filled(run_sql):
     """4.3: в approved-заявке заполнен bank_id — банк подтвердил операцию.
     Сумму заявки проверить нельзя: в credit_request_entity колонки amount нет

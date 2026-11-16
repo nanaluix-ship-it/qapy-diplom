@@ -1,6 +1,6 @@
 import os
 import time
-
+import allure
 import pytest
 from selenium import webdriver
 from selenium.webdriver.chrome.options import Options
@@ -9,6 +9,7 @@ from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 from selenium.common.exceptions import NoSuchElementException, TimeoutException
 from faker import Faker
+from tests.conftest import attach_screenshot
 
 fake = Faker(locale="ru_RU")
 
@@ -110,12 +111,15 @@ def fill_card_form(driver, wait, card_number):
     continue_btn.click()
 
 
+@allure.feature("Покупка по дебетовой карте")
+@allure.story("Обработка отклонённой карты (issue #1)")
+@allure.severity(allure.severity_level.CRITICAL)
 @pytest.mark.xfail(
     reason="issue #1: declined-оплата обрабатывается как успешная, "
            "уведомление об отказе не показывается",
     strict=False,
 )
-def test_declined_card_shows_error():
+def test_3_1_declined_shows_error():
     """При оплате отклонённой картой должно появиться уведомление об отказе."""
     driver, wait = open_card_form()
     try:
@@ -136,55 +140,45 @@ def test_declined_card_shows_error():
         driver.quit()
 
 
-def test_declined_card_does_not_show_success():
+@allure.feature("Покупка по дебетовой карте")
+@allure.story("Обработка отклонённой карты (issue #1)")
+@allure.severity(allure.severity_level.CRITICAL)
+def test_3_1_declined_does_not_show_success():
     """Баг-репродукция (issue #1): UI не должен показывать «Успешно»
-    при оплате отклонённой картой."""
+    при оплате отклонённой картой. FAILED = баг подтверждён."""
     driver, wait = open_card_form()
     try:
         fill_card_form(driver, wait, DECLINED_CARD)
 
         bank_wait = WebDriverWait(driver, BANK_TIMEOUT)
-        try:
-            success_msg = bank_wait.until(
-                EC.visibility_of_element_located(SUCCESS_NOTIFICATION)
-            )
-        except TimeoutException:
-            print("\n«Успешно» не появилось — баг не воспроизвёлся (или уже исправлен)")
-            return
+        success_msg = bank_wait.until(
+            EC.visibility_of_element_located(SUCCESS_NOTIFICATION)
+        )
 
-        # Доказательства: скриншот, разметка пойманного элемента,
-        # полный текст уведомления-обёртки
-        os.makedirs("screenshots", exist_ok=True)
-        driver.save_screenshot("screenshots/issue1_success_on_declined.png")
+        attach_screenshot(driver, "issue1_success_on_declined")
 
-        print("\n=== БАГ-ДОКАЗАТЕЛЬСТВА ===")
-        print("Пойманный элемент:")
-        print("  tag:", success_msg.tag_name)
-        print("  class:", success_msg.get_attribute("class"))
-        print("  text:", repr(success_msg.text))
-        print("  outerHTML (первые 500 символов):")
-        print((success_msg.get_attribute("outerHTML") or "")[:500])
-
-        # Ищем видимую обёртку уведомления — у неё должен быть полный текст
         containers = [
             el for el in driver.find_elements(By.CSS_SELECTOR, "[class*='notification']")
             if el.is_displayed() and (el.text or "").strip()
         ]
-        for el in containers:
-            print(f"\nВидимое уведомление: class={el.get_attribute('class')!r}, "
-                  f"text={el.text!r}")
-
         full_text = " | ".join(el.text for el in containers) or success_msg.text
+
         assert False, (
             f"БАГ ПОДТВЕРЖДЁН: UI показал уведомление успешной операции "
             f"(текст: {full_text!r}) при оплате отклонённой картой. "
-            f"См. issue #1, скриншот: screenshots/issue1_success_on_declined.png"
+            f"См. issue #1, скриншот прикреплён во вкладке Attachments."
         )
+    except TimeoutException:
+        print("\n«Успешно» не появилось — баг не воспроизвёлся (или уже исправлен)")
+        raise
     finally:
         driver.quit()
 
 
-def test_declined_card_db_state(run_sql):
+@allure.feature("Покупка по дебетовой карте")
+@allure.story("Статус отклонённой операции в БД")
+@allure.severity(allure.severity_level.CRITICAL)
+def  test_3_1_declined_db_state(run_sql):
     """Блок 3.8: после оплаты отклонённой картой новая запись в payment_entity
     имеет статус DECLINED (не APPROVED). Проверка срезом «до/после» отправки —
     не зависит от истории БД."""

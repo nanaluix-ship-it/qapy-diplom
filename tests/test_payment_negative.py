@@ -1,7 +1,7 @@
-import os
 import time
-
+import allure
 import pytest
+from tests.conftest import attach_screenshot, DECLINED_CARD
 from selenium import webdriver
 from selenium.webdriver.chrome.options import Options
 from selenium.webdriver.common.by import By
@@ -75,7 +75,6 @@ def _find_owner_field(driver):
 def fill_form(driver, wait, card=None, month=None, year=None,
               owner=None, cvc=None):
     """Заполняет только переданные поля формы и нажимает «Продолжить».
-
     Незаполненные поля остаются пустыми — так тестируется валидация.
     """
     fields = {
@@ -105,7 +104,6 @@ def _visible_validation_errors(driver):
 
 def _wait_for_new_payment(run_sql, before_created, timeout=DB_SETTLE_TIMEOUT):
     """Ищет записи payment_entity, созданные ПОСЛЕ отправки формы.
-
     Возвращает список найденных записей (может быть пустым — это значит,
     что операция не зарегистрирована шлюзом).
     """
@@ -122,6 +120,9 @@ def _wait_for_new_payment(run_sql, before_created, timeout=DB_SETTLE_TIMEOUT):
     return []
 
 
+@allure.feature("Покупка по дебетовой карте")
+@allure.story("Валидация: пустая форма")
+@allure.severity(allure.severity_level.NORMAL)
 def test_3_2_empty_form_blocked(run_sql):
     """3.2: пустая форма → ошибки под полями, заявка в банк не уходит
     (в payment_entity не появляется новых записей)."""
@@ -152,6 +153,9 @@ def test_3_2_empty_form_blocked(run_sql):
         driver.quit()
 
 
+@allure.feature("Покупка по дебетовой карте")
+@allure.story("Валидация: неизвестный номер карты")
+@allure.severity(allure.severity_level.NORMAL)
 def test_3_3_unknown_card_rejected(run_sql):
     """3.3: незнакомая карта 1234 5678 9012 3456 → уведомление об отказе.
     Записи в payment_entity после отправки либо нет (операция шлюзом
@@ -192,6 +196,9 @@ def test_3_3_unknown_card_rejected(run_sql):
         driver.quit()
 
 
+@allure.feature("Покупка по дебетовой карте")
+@allure.story("Валидация: месяц")
+@allure.severity(allure.severity_level.MINOR)
 @pytest.mark.parametrize("bad_month", ["13", "00"])
 def test_3_4_invalid_month(bad_month):
     """3.4: месяц 13 или 00 → ошибка валидации, отправка блокируется."""
@@ -209,6 +216,9 @@ def test_3_4_invalid_month(bad_month):
         driver.quit()
 
 
+@allure.feature("Покупка по дебетовой карте")
+@allure.story("Валидация: срок действия в далёком будущем")
+@allure.severity(allure.severity_level.MINOR)
 def test_3_6_far_future_year():
     """3.6: год 99 → ошибка валидации, отправка блокируется."""
     driver, wait = open_payment_form()
@@ -225,10 +235,12 @@ def test_3_6_far_future_year():
         driver.quit()
 
 
+@allure.feature("Покупка по дебетовой карте")
+@allure.story("Валидация: CVC/CVV (issue #3)")
+@allure.severity(allure.severity_level.NORMAL)
 @pytest.mark.parametrize("cvc", ["1", "99", "00", "000"])
 def test_3_7_cvc_validation(cvc):
     """3.7: валидация CVC.
-
     Короткие значения (1–2 цифры) отклоняются ошибкой «Неверный формат».
     CVC '000' формально проходит проверку длины и принимается формой —
     это баг, см. issue #3: тест намеренно оставлен красным как репродукция.
@@ -243,10 +255,14 @@ def test_3_7_cvc_validation(cvc):
         errors = _visible_validation_errors(driver)
 
         if cvc == "000":
+
+            attach_screenshot(driver, "issue3_cvc_000_accepted")
+
             assert has_error, (
                 f"БАГ ПОДТВЕРЖДЁН (issue #3): CVC {cvc!r} принят валидацией — "
                 f"подполевых ошибок нет ({errors or 'нет сообщений'}), "
-                f"форма отправится в шлюз с недопустимым значением CVC"
+                f"форма отправится в шлюз с недопустимым значением CVC. "
+                f"Скриншот во вкладке Attachments."
             )
             print(f"\n[3.7] OK: CVC {cvc!r} отклонён — баг #3 не воспроизвёлся")
         else:
@@ -256,6 +272,36 @@ def test_3_7_cvc_validation(cvc):
         driver.quit()
 
 
+@pytest.mark.parametrize("cvc", ["001", "999"])
+@allure.feature("Покупка по дебетовой карте")
+@allure.story("Валидация: CVC/CVV — граничные корректные значения")
+@allure.severity(allure.severity_level.NORMAL)
+def test_3_9_cvc_boundary_valid(cvc):
+    """3.9: корректные граничные CVC («001», «999») проходят валидацию.
+    Уточняет issue #3: баг не в общей логике валидации CVC, а
+    конкретно в пропуске значения «000».
+    """
+    driver, wait = open_payment_form()
+    try:
+        fill_form(driver, wait,
+                  card=APPROVED_CARD, month="12", year="26",
+                  owner=fake.first_name() + " " + fake.last_name(), cvc=cvc)
+
+        assert not driver.find_elements(By.CSS_SELECTOR, ".input_invalid"), (
+            f"Валидация отклонила корректный CVC {cvc!r} — "
+            f"логика валидации слишком строгая"
+        )
+        # Форма принята — ждём ответ банка, чтобы подтвердить,
+        # что операция реально прошла (создастся APPROVED-запись)
+        bank_wait = WebDriverWait(driver, BANK_TIMEOUT)
+        bank_wait.until(EC.visibility_of_element_located(SUCCESS_NOTIFICATION))
+    finally:
+        driver.quit()
+
+
+@allure.feature("Покупка по дебетовой карте")
+@allure.story("Валидация: поле «Владелец» (issue #4)")
+@allure.severity(allure.severity_level.NORMAL)
 @pytest.mark.parametrize("bad_owner, label", [
     ("123456", "цифры"),
     ("Иванов Иван", "кириллица"),
@@ -263,7 +309,6 @@ def test_3_7_cvc_validation(cvc):
 ])
 def test_3_8_owner_validation(run_sql, bad_owner, label):
     """3.8: валидация поля «Владелец».
-
     Поле должно принимать только имя и фамилию латиницей. Недопустимые
     значения (цифры, кириллица, спецсимволы) должны отклоняться ошибкой
     валидации. Все три класса значений проходят без ошибок и уходят
@@ -304,29 +349,32 @@ def test_3_8_owner_validation(run_sql, bad_owner, label):
                        f"{new_rows[0]['status']})" if new_rows
                        else "запись в payment_entity не создана")
 
-            os.makedirs("screenshots", exist_ok=True)
-            driver.save_screenshot(
-                f"screenshots/issue4_owner_{label}_success.png")
+            attach_screenshot(driver, f"issue4_owner_{label}_success")
 
             assert False, (
                 f"БАГ ПОДТВЕРЖДЁН (issue #4): владелец {label!r} "
                 f"({bad_owner!r}) принят валидацией — подполевых ошибок нет "
                 f"({errors or 'нет сообщений'}), показано «Успешно», "
-                f"{db_note}. Скриншот: "
-                f"screenshots/issue4_owner_{label}_success.png"
+                f"{db_note}. Скриншот во вкладке Attachments."
             )
         else:
+            attach_screenshot(driver, f"issue4_owner_{label}_no_feedback")
+
             assert False, (
                 f"БАГ ПОДТВЕРЖДЁН (issue #4): владелец {label!r} "
                 f"({bad_owner!r}) принят валидацией — подполевых ошибок нет "
                 f"({errors or 'нет сообщений'}), форма отправлена в шлюз, "
                 f"ответ за {BANK_TIMEOUT} с не получен (банк может "
-                f"отклонить операцию, но обратной связи пользователю нет)"
+                f"отклонить операцию, но обратной связи пользователю нет). "
+                f"Скриншот во вкладке Attachments."
             )
     finally:
         driver.quit()
 
 
+@allure.feature("Хранение данных в БД")
+@allure.story("Единственная запись платежа на одну отправку формы")
+@allure.severity(allure.severity_level.CRITICAL)
 def test_6_2_single_record_per_submit(run_sql):
     """6.2: одно нажатие «Продолжить» → ровно одна запись в payment_entity
     (нет дублей)."""
@@ -361,5 +409,196 @@ def test_6_2_single_record_per_submit(run_sql):
         )
         print(f"\n[6.2] OK: ровно одна запись APPROVED "
               f"(id={new_rows_after[0]['id']})")
+    finally:
+        driver.quit()
+
+
+@allure.feature("Хранение данных в БД")
+@allure.story("Заказ создаётся только после одобрения банком (issue #2)")
+@allure.severity(allure.severity_level.CRITICAL)
+def test_6_3_no_order_on_declined_payment(run_sql):
+    """6.3: при отклонённой операции заказ в order_entity не создаётся.
+    Ожидаемое поведение: заказ появляется только после одобрения банком.
+    Фактически: шлюз создаёт запись в order_entity и для DECLINED-платежей —
+    это баг, см. issue #2: тест намеренно оставлен красным как репродукция.
+    """
+    driver, wait = open_payment_form()
+    try:
+        # Граница окна проверки — последняя запись в любой из таблиц,
+        # чтобы заказы и платежи прошлых прогонов не попали в выборку
+        before = _parse_rows(run_sql(
+            "SELECT MAX(created) AS max_created FROM ("
+            "SELECT created FROM payment_entity "
+            "UNION ALL SELECT created FROM order_entity) t;"
+        ))
+        before_created = (before[0]["max_created"]
+                          if before and before[0]["max_created"] else "")
+
+        fill_form(driver, wait,
+                  card=DECLINED_CARD, month="12", year="26",
+                  owner=fake.first_name() + " " + fake.last_name(), cvc="999")
+
+        # UI-уведомление не ждём: для declined-карты UI может показать
+        # как отказ, так и «Успешно» (баг issue #1) — нас интересует
+        # только результат банковской операции на уровне БД.
+        # Ждём появления DECLINED-записи в payment_entity
+        declined_rows = []
+        deadline = time.monotonic() + BANK_TIMEOUT + DB_SETTLE_TIMEOUT
+        while time.monotonic() < deadline:
+            declined_rows = _parse_rows(run_sql(
+                f"SELECT id, status, created FROM payment_entity "
+                f"WHERE status = 'DECLINED' AND created > '{before_created}';"
+            ))
+            if declined_rows:
+                break
+            time.sleep(1)
+
+        if not declined_rows:
+            print("\n[6.3] DECLINED-запись в payment_entity не появилась — "
+                  "операция не зарегистрирована шлюзом, "
+                  "баг #2 не воспроизвёлся")
+            return
+
+        print(f"\n[6.3] DECLINED-запись появилась: "
+              f"id={declined_rows[0]['id']}, "
+              f"created={declined_rows[0]['created']}")
+
+        # Заказ может появиться с задержкой до минуты после DECLINED-записи
+        # (в прошлых прогонах запись ложилась на границе окна проверки).
+        # Детектируем по времени создания: за окно теста единственная
+        # операция — declined-платёж, поэтому любой новый заказ ошибочен.
+        orders = []
+        deadline = time.monotonic() + 60
+        while time.monotonic() < deadline:
+            orders = _parse_rows(run_sql(
+                f"SELECT id, created, payment_id, credit_id FROM order_entity "
+                f"WHERE created > '{before_created}' ORDER BY created;"
+            ))
+            if orders:
+                break
+            time.sleep(2)
+
+        if orders:
+            for o in orders:
+                print(f"\n[6.3] Ошибочный заказ: id={o['id']}, "
+                      f"created={o['created']}, payment_id={o['payment_id']}, "
+                      f"credit_id={o['credit_id']}")
+
+            evidence_lines = [
+                f"order_id={o['id']} (created={o['created']}, "
+                f"payment_id={o['payment_id']}, credit_id={o['credit_id']}) "
+                f"появился после declined-платежа "
+                f"{declined_rows[0]['id']} "
+                f"(status=DECLINED, created={declined_rows[0]['created']})"
+                for o in orders
+            ]
+            allure.attach(
+                "\n".join(evidence_lines).encode("utf-8"),
+                name="issue2_orders_for_declined_payments",
+                attachment_type=allure.attachment_type.TEXT,
+            )
+
+            assert False, (
+                f"БАГ ПОДТВЕРЖДЁН (issue #2): после declined-операции "
+                f"{declined_rows[0]['id']} в order_entity появились записи: "
+                f"{', '.join(o['id'] for o in orders)}. Ожидается: заказ "
+                f"создаётся только после одобрения банком. "
+                f"Доказательство — во вкладке Attachments."
+            )
+
+        print(f"\n[6.3] OK: для DECLINED-платежа {declined_rows[0]['id']} "
+              f"заказ в order_entity не создан — баг #2 не воспроизвёлся")
+    finally:
+        driver.quit()
+
+
+@allure.feature("Хранение данных в БД")
+@allure.story("Целостность ссылки заказа (issue #2)")
+@allure.severity(allure.severity_level.CRITICAL)
+def test_6_4_order_link_integrity(run_sql):
+    """6.4: у каждого заказа, созданного в окне теста, payment_id должен
+    ссылаться на существующую запись payment_entity.
+    Фактически: заказ, созданный для DECLINED-платежа, ссылается на
+    идентификатор, которого нет в payment_entity — битая ссылка,
+    см. issue #2. Тест красный = баг подтверждён.
+    """
+    driver, wait = open_payment_form()
+    try:
+        before = _parse_rows(run_sql(
+            "SELECT MAX(created) AS max_created FROM ("
+            "SELECT created FROM payment_entity "
+            "UNION ALL SELECT created FROM order_entity) t;"
+        ))
+        before_created = (before[0]["max_created"]
+                          if before and before[0]["max_created"] else "")
+
+        fill_form(driver, wait,
+                  card=DECLINED_CARD, month="12", year="26",
+                  owner=fake.first_name() + " " + fake.last_name(), cvc="999")
+
+        # Ждём DECLINED-запись (та же логика, что в 6.3)
+        declined_rows = []
+        deadline = time.monotonic() + BANK_TIMEOUT + DB_SETTLE_TIMEOUT
+        while time.monotonic() < deadline:
+            declined_rows = _parse_rows(run_sql(
+                f"SELECT id, status, created FROM payment_entity "
+                f"WHERE status = 'DECLINED' AND created > '{before_created}';"
+            ))
+            if declined_rows:
+                break
+            time.sleep(1)
+
+        if not declined_rows:
+            print("\n[6.4] DECLINED-запись не появилась — баг #2 "
+                  "не воспроизвёлся, проверка ссылок не информативна")
+            return
+
+        # Ждём заказ до минуты (в 6.3 заказ появлялся с задержкой)
+        orders = []
+        deadline = time.monotonic() + 60
+        while time.monotonic() < deadline:
+            orders = _parse_rows(run_sql(
+                f"SELECT id, created, payment_id, credit_id FROM order_entity "
+                f"WHERE created > '{before_created}' ORDER BY created;"
+            ))
+            if orders:
+                break
+            time.sleep(2)
+
+        if not orders:
+            print("\n[6.4] Заказ не создан — баг #2 не воспроизвёлся "
+                  "в этом прогоне, ссылки целы")
+            return
+
+        # Проверяем каждую ссылку на существование платежа
+        broken = []
+        for o in orders:
+            if o["payment_id"]:
+                ref = _parse_rows(run_sql(
+                    f"SELECT id FROM payment_entity "
+                    f"WHERE id = '{o['payment_id']}';"
+                ))
+                if not ref:
+                    broken.append(o)
+
+        if broken:
+            evidence_lines = [
+                f"order_id={o['id']} ссылается на payment_id={o['payment_id']} — "
+                f"запись отсутствует в payment_entity"
+                for o in broken
+            ]
+            allure.attach(
+                "\n".join(evidence_lines).encode("utf-8"),
+                name="issue2_broken_order_links",
+                attachment_type=allure.attachment_type.TEXT,
+            )
+            assert False, (
+                f"БАГ ПОДТВЕРЖДЁН (issue #2, битая ссылка): из "
+                f"{len(orders)} заказ(ов) в окне теста {len(broken)} "
+                f"ссылаются на несуществующие платежи. "
+                f"Доказательство — во вкладке Attachments."
+            )
+        print("\n[6.4] Все ссылки заказов на платежи существуют — "
+              "битых ссылок в этом прогоне нет")
     finally:
         driver.quit()

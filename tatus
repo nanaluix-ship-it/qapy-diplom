@@ -1,0 +1,17 @@
+[33mfac40fa[m[33m ([m[1;36mHEAD[m[33m -> [m[1;32mmain[m[33m, [m[1;33mtag: [m[1;33mv1.0-final[m[33m, [m[1;31morigin/main[m[33m, [m[1;31morigin/HEAD[m[33m)[m Final: QA diploma project complete
+[33m8b6742a[m Final run summary: 3 legitimate bug reproductions; test 2.3 flake documented as observation
+[33ma118eb0[m Fix test_declined_card_db_state: before/after DB comparison (stale APPROVED from pre-run checks caused false failure)
+[33m8270e2a[m Block 5 complete: issue #1/#2 confirmed in credit scenario; validation green
+[33mdcac605[m Tests: before/after DB comparison in 3.3/6.2; CVC 000 red as issue #3 reproduction
+[33mb605087[m Block 3 partial: issue #1 confirmed at UI layer, DB writes DECLINED correctly (3.8 green)
+[33m62acc16[m Block 4 green: credit request APPROVED, order linked via bank operation id
+[33m7beb471[m Block 2 green: approved payment, boundary dates, order-payment link. Issue #2 closed as false defect
+[33m7a5a3f6[m Block 2 tests: approved payment, DB checks; issue #2 - valid expiry 01/2027 rejected
+[33m498a8e3[m Add autotest reproducing issue #1: UI shows success for DECLINED payment, DB status is correct
+[33m2b15517[m Add first pytest tests for shop page
+[33m235957c[m Add docker-compose, gitignore and run instructions
+[33mea9216e[m Update plan: test on both databases
+[33m523bc9b[m Add minimal README
+[33m139a335[m Add test automation plan
+[33m8bd669a[m add jar
+[33m138f355[m add files

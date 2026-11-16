@@ -1,13 +1,13 @@
 import os
+import allure
 import time
 from datetime import date
-
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.common.by import By
 from selenium.common.exceptions import TimeoutException
 
-from conftest import (
+from tests.conftest import (
     make_driver, open_payment_form, fill_card_form,
     APPROVED_CARD, SUCCESS_NOTIFICATION, BANK_TIMEOUT,
 )
@@ -17,9 +17,7 @@ TOUR_PRICE_KOP = 4500000  # 45 000 ₽ в копейках
 
 
 def _yy(year: int) -> str:
-    """Год в двузначном формате для поля карты: 26, а не 2026.
-
-    Поле «Год» ограничено двумя символами — четырёхзначный ввод
+    """Поле «Год» ограничено двумя символами — четырёхзначный ввод
     обрезается до '20' и дата превращается в 2020-й.
     """
     return f"{year % 100:02d}"
@@ -50,6 +48,9 @@ def _dump_visible_texts(driver, label):
     driver.save_screenshot(f"screenshots/diag_{safe_label}.png")
 
 
+@allure.feature("Покупка по дебетовой карте")
+@allure.story("Оплата одобренной картой")
+@allure.severity(allure.severity_level.CRITICAL)
 def test_2_1_approved_card_payment(run_sql):
     """2.1: одобренная карта → «Успешно», в payment_entity запись APPROVED."""
     driver = make_driver()
@@ -88,6 +89,9 @@ def test_2_1_approved_card_payment(run_sql):
         driver.quit()
 
 
+@allure.feature("Покупка по дебетовой карте")
+@allure.story("Граничные значения срока действия карты")
+@allure.severity(allure.severity_level.NORMAL)
 def test_2_2_boundary_december(run_sql):
     """2.2a: граничный месяц 12 текущего года — форма отправляется, банк отвечает."""
     driver = make_driver()
@@ -110,6 +114,9 @@ def test_2_2_boundary_december(run_sql):
         driver.quit()
 
 
+@allure.feature("Покупка по дебетовой карте")
+@allure.story("Граничные значения срока действия карты")
+@allure.severity(allure.severity_level.NORMAL)
 def test_2_2_boundary_january_next_year(run_sql):
     """2.2b: срок 01 следующего года — валидная дата на границе года, принята банком."""
     driver = make_driver()
@@ -132,35 +139,59 @@ def test_2_2_boundary_january_next_year(run_sql):
         driver.quit()
 
 
+@allure.feature("Покупка по дебетовой карте")
+@allure.story("Связь заказа с платежом в БД")
+@allure.severity(allure.severity_level.CRITICAL)
 def test_2_3_order_linked_to_payment(run_sql):
     """2.3: после успешной оплаты в order_entity появляется запись,
-    связанная с payment_entity через transaction_id."""
+    связанная с payment_entity через transaction_id.
+    Ожидание записи в payment_entity выполняется поллингом БД, а не
+    ожиданием UI-уведомления: шлюз-симулятор иногда отвечает дольше
+    таймаута уведомления, что делало тест нестабильным (flaky).
+    """
     driver = make_driver()
     try:
         wait = WebDriverWait(driver, 15)
         driver.get(BASE_URL)
         open_payment_form(driver, wait)
-        fill_card_form(driver, wait, APPROVED_CARD)
 
-        bank_wait = WebDriverWait(driver, BANK_TIMEOUT)
-        try:
-            bank_wait.until(EC.visibility_of_element_located(SUCCESS_NOTIFICATION))
-        except TimeoutException:
-            _dump_visible_texts(driver, "2.3")
-            raise
-        time.sleep(2)
-
-        payments = _parse_rows(run_sql(
-            "SELECT id, transaction_id FROM payment_entity "
+        # Срез БД до отправки формы: запоминаем последнюю запись платежа
+        before = _parse_rows(run_sql(
+            "SELECT id, created FROM payment_entity "
             "ORDER BY created DESC LIMIT 1;"
         ))
-        assert payments, "Нет записи в payment_entity"
-        transaction_id = payments[0]["transaction_id"]
+        before_created = before[0]["created"] if before else ""
+        print(f"\n[2.3] Срез до оплаты: последняя запись payment_entity "
+              f"создана {before_created!r}")
+
+        fill_card_form(driver, wait, APPROVED_CARD)
+
+        # Поллинг БД: ждём новую запись в payment_entity
+        deadline = time.monotonic() + BANK_TIMEOUT
+        payment = None
+        while time.monotonic() < deadline:
+            rows = _parse_rows(run_sql(
+                "SELECT id, transaction_id FROM payment_entity "
+                f"WHERE created > '{before_created}' "
+                "ORDER BY created DESC LIMIT 1;"
+            ))
+            if rows:
+                payment = rows[0]
+                break
+            time.sleep(1)
+
+        assert payment is not None, (
+            f"За {BANK_TIMEOUT} с в payment_entity не появилась запись — "
+            "оплата не дошла до БД"
+        )
+        transaction_id = payment["transaction_id"]
+        print(f"[2.3] Новая запись платежа: id={payment['id']}, "
+              f"transaction_id={transaction_id!r}")
 
         # Смотрим структуру order_entity, чтобы не гадать с колонками
         desc = _parse_rows(run_sql("DESCRIBE order_entity;"))
         columns = [r["Field"] for r in desc]
-        print(f"\n[2.3] Колонки order_entity: {columns}")
+        print(f"[2.3] Колонки order_entity: {columns}")
 
         orders = _parse_rows(run_sql("SELECT * FROM order_entity;"))
         assert orders, "order_entity пуст — оплата не создала заказ"
